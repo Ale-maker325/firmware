@@ -159,25 +159,6 @@ const char *getDeviceName()
     return name;
 }
 
-#ifdef VEXT_ENABLE_V03
-
-#include <soc/rtc.h>
-
-static uint32_t calibrate_one(rtc_cal_sel_t cal_clk, const char *name)
-{
-    const uint32_t cal_count = 1000;
-    uint32_t cali_val;
-    for (int i = 0; i < 5; ++i) {
-        cali_val = rtc_clk_cal(cal_clk, cal_count);
-    }
-    return cali_val;
-}
-
-int heltec_version = 3;
-
-#define CALIBRATE_ONE(cali_clk) calibrate_one(cali_clk, #cali_clk)
-#endif
-
 static int32_t ledBlinker()
 {
     static bool ledOn;
@@ -191,15 +172,10 @@ static int32_t ledBlinker()
 
 uint32_t timeLastPowered = 0;
 
-#if HAS_BUTTON || defined(ARCH_PORTDUINO)
-bool ButtonThread::shutdown_on_long_stop = false;
-#endif
-
 static Periodic *ledPeriodic;
 static OSThread *powerFSMthread;
 #if HAS_BUTTON || defined(ARCH_PORTDUINO)
 static OSThread *buttonThread;
-uint32_t ButtonThread::longPressTime = 0;
 #endif
 static OSThread *accelerometerThread;
 static OSThread *ambientLightingThread;
@@ -248,56 +224,31 @@ void setup()
     digitalWrite(PIN_EINK_PWR_ON, HIGH);
 #endif
 
-#ifdef ST7735_BL_V03 // Heltec Wireless Tracker PCB Change Detect/Hack
-
-    rtc_clk_32k_enable(true);
-    CALIBRATE_ONE(RTC_CAL_RTC_MUX);
-    if (CALIBRATE_ONE(RTC_CAL_32K_XTAL) != 0) {
-        rtc_clk_slow_freq_set(RTC_SLOW_FREQ_32K_XTAL);
-        CALIBRATE_ONE(RTC_CAL_RTC_MUX);
-        CALIBRATE_ONE(RTC_CAL_32K_XTAL);
-    }
-
-    if (rtc_clk_slow_freq_get() != RTC_SLOW_FREQ_32K_XTAL) {
-        heltec_version = 3;
-    } else {
-        heltec_version = 5;
-    }
-#endif
-
 #if defined(VEXT_ENABLE_V03)
-    if (heltec_version == 3) {
-        pinMode(VEXT_ENABLE_V03, OUTPUT);
-        digitalWrite(VEXT_ENABLE_V03, 0); // turn on the display power
-        LOG_DEBUG("HELTEC Detect Tracker V1.0\n");
-    } else {
-        pinMode(VEXT_ENABLE_V05, OUTPUT);
-        digitalWrite(VEXT_ENABLE_V05, 1); // turn on the display power
-        LOG_DEBUG("HELTEC Detect Tracker V1.1\n");
-    }
+    pinMode(VEXT_ENABLE_V03, OUTPUT);
+    pinMode(ST7735_BL_V03, OUTPUT);
+    digitalWrite(VEXT_ENABLE_V03, 0); // turn on the display power and antenna boost
+    digitalWrite(ST7735_BL_V03, 1);   // display backligth on
+    LOG_DEBUG("HELTEC Detect Tracker V1.0\n");
+#elif defined(VEXT_ENABLE_V05)
+    pinMode(VEXT_ENABLE_V05, OUTPUT);
+    pinMode(ST7735_BL_V05, OUTPUT);
+    digitalWrite(VEXT_ENABLE_V05, 1); // turn on the lora antenna boost
+    digitalWrite(ST7735_BL_V05, 1);   // turn on display backligth
+    LOG_DEBUG("HELTEC Detect Tracker V1.1\n");
 #elif defined(VEXT_ENABLE)
     pinMode(VEXT_ENABLE, OUTPUT);
     digitalWrite(VEXT_ENABLE, 0); // turn on the display power
 #endif
 
 #if defined(VGNSS_CTRL_V03)
-    if (heltec_version == 3) {
-        pinMode(VGNSS_CTRL_V03, OUTPUT);
-        digitalWrite(VGNSS_CTRL_V03, LOW);
-    } else {
-        pinMode(VGNSS_CTRL_V05, OUTPUT);
-        digitalWrite(VGNSS_CTRL_V05, LOW);
-    }
+    pinMode(VGNSS_CTRL_V03, OUTPUT);
+    digitalWrite(VGNSS_CTRL_V03, LOW);
 #endif
 
 #if defined(VTFT_CTRL_V03)
-    if (heltec_version == 3) {
-        pinMode(VTFT_CTRL_V03, OUTPUT);
-        digitalWrite(VTFT_CTRL_V03, LOW);
-    } else {
-        pinMode(VTFT_CTRL_V05, OUTPUT);
-        digitalWrite(VTFT_CTRL_V05, LOW);
-    }
+    pinMode(VTFT_CTRL_V03, OUTPUT);
+    digitalWrite(VTFT_CTRL_V03, LOW);
 #endif
 
 #if defined(VGNSS_CTRL)
@@ -363,6 +314,13 @@ void setup()
     Wire.begin();
 #elif defined(I2C_SDA) && !defined(ARCH_RP2040)
     Wire.begin(I2C_SDA, I2C_SCL);
+#elif defined(ARCH_PORTDUINO)
+    if (settingsStrings[i2cdev] != "") {
+        LOG_INFO("Using %s as I2C device.\n", settingsStrings[i2cdev]);
+        Wire.begin(settingsStrings[i2cdev].c_str());
+    } else {
+        LOG_INFO("No I2C device configured, skipping.\n");
+    }
 #elif HAS_WIRE
     Wire.begin();
 #endif
@@ -408,8 +366,9 @@ void setup()
     // We need to scan here to decide if we have a screen for nodeDB.init() and because power has been applied to
     // accessories
     auto i2cScanner = std::unique_ptr<ScanI2CTwoWire>(new ScanI2CTwoWire());
-
+#ifdef HAS_WIRE
     LOG_INFO("Scanning for i2c devices...\n");
+#endif
 
 #if defined(I2C_SDA1) && defined(ARCH_RP2040)
     Wire1.setSDA(I2C_SDA1);
@@ -429,6 +388,11 @@ void setup()
 #elif defined(I2C_SDA) && !defined(ARCH_RP2040)
     Wire.begin(I2C_SDA, I2C_SCL);
     i2cScanner->scanPort(ScanI2C::I2CPort::WIRE);
+#elif defined(ARCH_PORTDUINO)
+    if (settingsStrings[i2cdev] != "") {
+        LOG_INFO("Scanning for i2c devices...\n");
+        i2cScanner->scanPort(ScanI2C::I2CPort::WIRE);
+    }
 #elif HAS_WIRE
     i2cScanner->scanPort(ScanI2C::I2CPort::WIRE);
 #endif
@@ -667,7 +631,8 @@ void setup()
     readFromRTC(); // read the main CPU RTC at first (in case we can't get GPS time)
 
     // If we're taking on the repeater role, ignore GPS
-    if (config.device.role != meshtastic_Config_DeviceConfig_Role_REPEATER) {
+    if (config.device.role != meshtastic_Config_DeviceConfig_Role_REPEATER &&
+        config.position.gps_mode != meshtastic_Config_PositionConfig_GpsMode_NOT_PRESENT) {
         gps = GPS::createGps();
     }
     if (gps) {
@@ -717,6 +682,7 @@ void setup()
 #ifdef ARCH_PORTDUINO
     if (settingsMap[use_sx1262]) {
         if (!rIf) {
+            LOG_DEBUG("Attempting to activate sx1262 radio on SPI port %s\n", settingsStrings[spidev].c_str());
             LockingArduinoHal *RadioLibHAL = new LockingArduinoHal(SPI, spiSettings);
             rIf = new SX1262Interface((LockingArduinoHal *)RadioLibHAL, settingsMap[cs], settingsMap[irq], settingsMap[reset],
                                       settingsMap[busy]);
@@ -730,6 +696,7 @@ void setup()
         }
     } else if (settingsMap[use_rf95]) {
         if (!rIf) {
+            LOG_DEBUG("Attempting to activate rf95 radio on SPI port %s\n", settingsStrings[spidev].c_str());
             LockingArduinoHal *RadioLibHAL = new LockingArduinoHal(SPI, spiSettings);
             rIf = new RF95Interface((LockingArduinoHal *)RadioLibHAL, settingsMap[cs], settingsMap[irq], settingsMap[reset],
                                     settingsMap[busy]);
@@ -744,6 +711,7 @@ void setup()
         }
     } else if (settingsMap[use_sx1280]) {
         if (!rIf) {
+            LOG_DEBUG("Attempting to activate sx1280 radio on SPI port %s\n", settingsStrings[spidev].c_str());
             LockingArduinoHal *RadioLibHAL = new LockingArduinoHal(SPI, spiSettings);
             rIf = new SX1280Interface((LockingArduinoHal *)RadioLibHAL, settingsMap[cs], settingsMap[irq], settingsMap[reset],
                                       settingsMap[busy]);

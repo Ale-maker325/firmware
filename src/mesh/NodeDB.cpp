@@ -173,6 +173,7 @@ void NodeDB::installDefaultConfig()
     config.lora.region = meshtastic_Config_LoRaConfig_RegionCode_UNSET;
     config.lora.modem_preset = meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST;
     config.lora.hop_limit = HOP_RELIABLE;
+    config.lora.ignore_mqtt = false;
 #ifdef PIN_GPS_EN
     config.position.gps_en_gpio = PIN_GPS_EN;
 #endif
@@ -181,7 +182,16 @@ void NodeDB::installDefaultConfig()
 #else
     config.device.disable_triple_click = true;
 #endif
-    config.position.gps_enabled = true;
+#if !HAS_GPS || defined(T_DECK)
+    config.position.gps_mode = meshtastic_Config_PositionConfig_GpsMode_NOT_PRESENT;
+#elif !defined(GPS_RX_PIN)
+    if (config.position.rx_gpio == 0)
+        config.position.gps_mode = meshtastic_Config_PositionConfig_GpsMode_NOT_PRESENT;
+    else
+        config.position.gps_mode = meshtastic_Config_PositionConfig_GpsMode_DISABLED;
+#else
+    config.position.gps_mode = meshtastic_Config_PositionConfig_GpsMode_ENABLED;
+#endif
     config.position.position_broadcast_smart_enabled = true;
     config.position.broadcast_smart_minimum_distance = 100;
     config.position.broadcast_smart_minimum_interval_secs = 30;
@@ -310,6 +320,17 @@ void NodeDB::installRoleDefaults(meshtastic_Config_DeviceConfig_Role role)
         config.device.node_info_broadcast_secs = ONE_DAY;
         config.position.position_broadcast_smart_enabled = false;
         config.position.position_broadcast_secs = ONE_DAY;
+        // Remove Altitude MSL from flags since CoTs use HAE (height above ellipsoid)
+        config.position.position_flags =
+            (meshtastic_Config_PositionConfig_PositionFlags_ALTITUDE | meshtastic_Config_PositionConfig_PositionFlags_SPEED |
+             meshtastic_Config_PositionConfig_PositionFlags_HEADING | meshtastic_Config_PositionConfig_PositionFlags_DOP);
+        moduleConfig.telemetry.device_update_interval = ONE_DAY;
+    } else if (role == meshtastic_Config_DeviceConfig_Role_TAK_TRACKER) {
+        config.device.node_info_broadcast_secs = ONE_DAY;
+        config.position.position_broadcast_smart_enabled = true;
+        config.position.position_broadcast_secs = 3 * 60; // Every 3 minutes
+        config.position.broadcast_smart_minimum_distance = 20;
+        config.position.broadcast_smart_minimum_interval_secs = 15;
         // Remove Altitude MSL from flags since CoTs use HAE (height above ellipsoid)
         config.position.position_flags =
             (meshtastic_Config_PositionConfig_PositionFlags_ALTITUDE | meshtastic_Config_PositionConfig_PositionFlags_SPEED |
@@ -451,6 +472,11 @@ void NodeDB::init()
     if (!devicestate.node_remote_hardware_pins) {
         meshtastic_NodeRemoteHardwarePin empty[12] = {meshtastic_RemoteHardwarePin_init_default};
         memcpy(devicestate.node_remote_hardware_pins, empty, sizeof(empty));
+    }
+
+    if (config.position.gps_enabled) {
+        config.position.gps_mode = meshtastic_Config_PositionConfig_GpsMode_ENABLED;
+        config.position.gps_enabled = 0;
     }
 
     saveToDisk(saveWhat);
@@ -878,10 +904,11 @@ meshtastic_NodeInfoLite *NodeDB::getOrCreateMeshNode(NodeNum n)
         if ((*numMeshNodes >= MAX_NUM_NODES) || (memGet.getFreeHeap() < meshtastic_NodeInfoLite_size * 3)) {
             if (screen)
                 screen->print("warning: node_db_lite full! erasing oldest entry\n");
+            LOG_INFO("warning: node_db_lite full! erasing oldest entry\n");
             // look for oldest node and erase it
             uint32_t oldest = UINT32_MAX;
             int oldestIndex = -1;
-            for (int i = 0; i < *numMeshNodes; i++) {
+            for (int i = 1; i < *numMeshNodes; i++) {
                 if (meshNodes[i].last_heard < oldest) {
                     oldest = meshNodes[i].last_heard;
                     oldestIndex = i;
