@@ -1,4 +1,4 @@
-// the default ESP32 Pin of 15 is the Oled SCL, set to 36 and 37 and works fine. 
+// the default ESP32 Pin of 15 is the Oled SCL, set to 36 and 37 and works fine.
 // Tested on Neo6m module.
 #undef GPS_RX_PIN
 #undef GPS_TX_PIN
