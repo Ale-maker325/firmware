@@ -41,7 +41,7 @@
 
 //*************************************************   BUTTON   ****************************************************/
 // Пін кнопки
-#define BUTTON_PIN 42    
+#define BUTTON_PIN 0   
 #define BUTTON_NEED_PULLUP
 //#define BUTTON_ACTIVE_LOW true
 //#define BUTTON_ACTIVE_PULLUP true
