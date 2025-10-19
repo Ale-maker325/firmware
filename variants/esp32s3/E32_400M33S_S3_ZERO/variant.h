@@ -1,13 +1,11 @@
 //*************************************************  RGB NEOPIXEL   ****************************************************/
 // Board has RGB LED 21
 #define ENABLE_AMBIENTLIGHTING
-//#define HAS_RGB_LED                          // Enable the use of RGB LED
 #define HAS_NEOPIXEL                         // Enable the use of neopixels
 #define NEOPIXEL_COUNT 1                     // How many neopixels are connected
 #define NEOPIXEL_DATA 21                     // gpio pin used to send data to the neopixels
 #define NEOPIXEL_TYPE (NEO_RGB + NEO_KHZ800) // type of neopixels in use
 //************************************************  END LED  ***************************************************/
-
 
 
 //*************************************************   OLED   ****************************************************/
@@ -20,29 +18,21 @@
 //***********************************************   END OLED  ***************************************************/
 
 
-
 //*************************************************   I2C2   ****************************************************/
 // Другий I2C для підключення зовнішніх пристроїв
 #define I2C_SDA1 17
 #define I2C_SCL1 18
 //*************************************************  END I2C2  ***************************************************/
 
-
-
-
 //*************************************************   GPS   ******************************************************/
 /*
   No GPS - but free pins are available.
 */
-#define HAS_GPS 0
-#undef GPS_RX_PIN
-#undef GPS_TX_PIN
+//#define HAS_GPS 0
+//#undef GPS_RX_PIN
+//#undef GPS_TX_PIN
 
 //*************************************************  END GPS  *****************************************************/
-
-
-
-
 
 //*************************************************   BUTTON   ****************************************************/
 // Пін кнопки
@@ -50,13 +40,11 @@
 #define BUTTON_NEED_PULLUP
 //#define BUTTON_ACTIVE_LOW true
 //#define BUTTON_ACTIVE_PULLUP true
-
 // #define PIN_BUTTON1 47 // 功能键
 // #define PIN_BUTTON2 4  // 电源键
 // #define ALT_BUTTON_PIN PIN_BUTTON2
 // #define ALT_BUTTON_ACTIVE_LOW false
 // #define ALT_BUTTON_ACTIVE_PULLUP false
-
 // #define EXT_NOTIFY_OUT 22
 
 //*************************************************  END BUTTON  ***************************************************/
