@@ -1,6 +1,3 @@
-// #undef LED_PIN 
-// #undef EXT_NOTIFY_OUT
-
 //*************************************************  RGB NEOPIXEL   ****************************************************/
 // Board has RGB LED 21
 //#define ENABLE_AMBIENTLIGHTING
@@ -63,26 +60,6 @@
 
 //*************************************************   Піни для інтерфейсу радіомодема    ******************************************************/
 
-// #undef USE_SX1276
-// #undef USE_SX1278
-// #undef LORA_SCK
-// #undef LORA_MISO
-// #undef LORA_MOSI
-// #undef LORA_CS
-// #define LORA_DIO0 RADIOLIB_NC
-// #undef LORA_DIO0
-// #undef LORA_DIO1
-// #undef LORA_DIO2
-// #undef SX126X_CS
-// #undef SX126X_SCK
-// #undef SX126X_MOSI
-// #undef SX126X_MISO
-// #undef SX126X_RESET
-// #undef SX126X_BUSY
-// #undef SX126X_DIO1
-// #undef SX126X_DIO2
-// #undef SX126X_TXEN
-// #undef SX126X_RXEN
 #define USE_SX1262 // E22-900M30S використовує SX1262
 #define USE_SX1268 // E22-400M30S використовує SX1268
 
