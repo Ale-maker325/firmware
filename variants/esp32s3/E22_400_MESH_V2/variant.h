@@ -65,11 +65,11 @@
 
 // #undef USE_SX1276
 // #undef USE_SX1278
-#undef LORA_SCK
-#undef LORA_MISO
-#undef LORA_MOSI
-#undef LORA_CS
-#define LORA_DIO0 RADIOLIB_NC
+// #undef LORA_SCK
+// #undef LORA_MISO
+// #undef LORA_MOSI
+// #undef LORA_CS
+// #define LORA_DIO0 RADIOLIB_NC
 // #undef LORA_DIO0
 // #undef LORA_DIO1
 // #undef LORA_DIO2
@@ -83,30 +83,25 @@
 // #undef SX126X_DIO2
 // #undef SX126X_TXEN
 // #undef SX126X_RXEN
-
-
- 
+#define USE_SX1262 // E22-900M30S використовує SX1262
 #define USE_SX1268 // E22-400M30S використовує SX1268
-#define SX126X_MAX_POWER 22 // Максимальна потужність передавача
-#undef SX126X_DIO2_AS_RF_SWITCH
+
+#define SX126X_CS 13    // Пін NSS (CS) модема SX126x
+#define LORA_SCK 7
+#define LORA_MOSI 8
+#define LORA_MISO 9
+#define SX126X_RESET 12
+#define SX126X_BUSY 11
+#define SX126X_DIO1 10
+
+#define SX126X_TXEN 2
+#define SX126X_RXEN 1
+
+// #define SX126X_DIO2_AS_RF_SWITCH
 #define SX126X_DIO3_TCXO_VOLTAGE 1.8
 
-//SPI
-#define SX126X_CS 13    // EBYTE module's NSS pin
-#define SX126X_SCK 7    // EBYTE module's SCK pin
-#define SX126X_MOSI 8  // EBYTE module's MOSI pin
-#define SX126X_MISO 9  // EBYTE module's MISO pin
-#define SX126X_RESET 12 // EBYTE module's NRST pin
-#define SX126X_BUSY 11  // EBYTE module's BUSY pin
-#define SX126X_DIO1 10  // EBYTE module's DIO1 pin
+#define LORA_CS SX126X_CS
+#define LORA_DIO1 SX126X_DIO1
 
-#define SX126X_TXEN 2 // Schematic connects EBYTE module's TXEN pin to MCU
-#define SX126X_RXEN 1 // Schematic connects EBYTE module's RXEN pin to MCU
-
-#define LORA_CS SX126X_CS     // Compatibility with variant file configuration structure
-#define LORA_SCK SX126X_SCK   // Compatibility with variant file configuration structure
-#define LORA_MOSI SX126X_MOSI // Compatibility with variant file configuration structure
-#define LORA_MISO SX126X_MISO // Compatibility with variant file configuration structure
-#define LORA_DIO1 SX126X_DIO1 // Compatibility with variant file configuration structure
-
+#define SX126X_MAX_POWER 22 // Максимальна потужність передавача
 //*************************************************  END Піни для інтерфейсу радіомодема   *****************************************************/

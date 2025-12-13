@@ -33,12 +33,12 @@ template <class T> class SX126xInterface : public RadioLibInterface
   protected:
     float currentLimit = 140; // Higher OCP limit for SX126x PA
     
-    // #ifdef SX126X_DIO3_TCXO_VOLTAGE
-    //   float tcxoVoltage = 1.8; // Default to 1.8V for Portduino boards
-    // #else
-    //   float tcxoVoltage = 0.0;
-    // #endif
-    float tcxoVoltage = 0.0;
+    #ifdef SX126X_DIO3_TCXO_VOLTAGE
+      float tcxoVoltage = 1.8; // Default to 1.8V for Portduino boards
+    #else
+      float tcxoVoltage = 0.0;
+    #endif
+    //float tcxoVoltage = 0.0;
     
 
     /**
