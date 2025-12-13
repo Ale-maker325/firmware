@@ -39,9 +39,10 @@
 #define I2C_SDA1 10
 
 // Radio
-#define USE_SX1262 // CDEBYTE EoRa-S3-900TB <- CDEBYTE E22-900MM22S <- Semtech SX1262
+//#define USE_SX1262 // CDEBYTE EoRa-S3-900TB <- CDEBYTE E22-900MM22S <- Semtech SX1262
 #define USE_SX1268 // CDEBYTE EoRa-S3-400TB <- CDEBYTE E22-400MM22S <- Semtech SX1268
 
+#define LORA_DIO0 -1 // a No connect
 #define SX126X_CS 7
 #define LORA_SCK 5
 #define LORA_MOSI 6
@@ -49,6 +50,7 @@
 #define SX126X_RESET 8
 #define SX126X_BUSY 34
 #define SX126X_DIO1 33
+
 
 #define SX126X_DIO2_AS_RF_SWITCH // All switching is performed with DIO2, it is automatically inverted using circuitry.
 // CDEBYTE EoRa-S3 uses an XTAL, thus we do not need DIO3 as TCXO voltage reference. Don't define SX126X_DIO3_TCXO_VOLTAGE for

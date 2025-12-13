@@ -1,5 +1,5 @@
-#undef LED_PIN 
-#undef EXT_NOTIFY_OUT
+// #undef LED_PIN 
+// #undef EXT_NOTIFY_OUT
 
 //*************************************************  RGB NEOPIXEL   ****************************************************/
 // Board has RGB LED 21
@@ -63,9 +63,32 @@
 
 //*************************************************   Піни для інтерфейсу радіомодема    ******************************************************/
 
+// #undef USE_SX1276
+// #undef USE_SX1278
+#undef LORA_SCK
+#undef LORA_MISO
+#undef LORA_MOSI
+#undef LORA_CS
+#define LORA_DIO0 RADIOLIB_NC
+// #undef LORA_DIO0
+// #undef LORA_DIO1
+// #undef LORA_DIO2
+// #undef SX126X_CS
+// #undef SX126X_SCK
+// #undef SX126X_MOSI
+// #undef SX126X_MISO
+// #undef SX126X_RESET
+// #undef SX126X_BUSY
+// #undef SX126X_DIO1
+// #undef SX126X_DIO2
+// #undef SX126X_TXEN
+// #undef SX126X_RXEN
+
+
  
 #define USE_SX1268 // E22-400M30S використовує SX1268
 #define SX126X_MAX_POWER 22 // Максимальна потужність передавача
+#undef SX126X_DIO2_AS_RF_SWITCH
 #define SX126X_DIO3_TCXO_VOLTAGE 1.8
 
 //SPI
