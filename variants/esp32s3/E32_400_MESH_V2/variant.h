@@ -1,6 +1,6 @@
 //*************************************************  RGB NEOPIXEL   ****************************************************/
 // Board has RGB LED 21
-#define ENABLE_AMBIENTLIGHTING
+//#define ENABLE_AMBIENTLIGHTING
 #define HAS_NEOPIXEL                         // Enable the use of neopixels
 #define NEOPIXEL_COUNT 1                     // How many neopixels are connected
 #define NEOPIXEL_DATA 21                     // gpio pin used to send data to the neopixels
