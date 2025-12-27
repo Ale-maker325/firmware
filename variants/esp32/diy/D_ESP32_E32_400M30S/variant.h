@@ -17,6 +17,10 @@
 //#define EXT_NOTIFY_OUT 12   // Overridden default pin to use for Ext Notify Module (#975).
 #define LED_PIN 27           // add status LED (compatible with core-pcb and DIY targets)
 
+
+// supported modules list
+#define USE_RF95 // RFM95/SX127x
+
 #define LORA_DIO0 26  // a No connect on the SX1262/SX1268 module
 #define LORA_RESET 14 // RST for SX1276, and for SX1262/SX1268
 #define LORA_DIO1 25  // IRQ for SX1262/SX1268
@@ -25,9 +29,6 @@
 #define LORA_MISO 19
 #define LORA_MOSI 23
 #define LORA_CS 17
-
-// supported modules list
-#define USE_RF95 // RFM95/SX127x
 
 #define LORA_RXEN 13
 #define LORA_TXEN 12
