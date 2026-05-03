@@ -1,10 +1,10 @@
 //*************************************************  RGB NEOPIXEL   ****************************************************/
 // Board has RGB LED 21
 //#define ENABLE_AMBIENTLIGHTING
-#define HAS_NEOPIXEL                         // Enable the use of neopixels
-#define NEOPIXEL_COUNT 1                     // How many neopixels are connected
-#define NEOPIXEL_DATA 21                     // gpio pin used to send data to the neopixels
-#define NEOPIXEL_TYPE (NEO_RGB + NEO_KHZ800) // type of neopixels in use
+// #define HAS_NEOPIXEL                         // Enable the use of neopixels
+// #define NEOPIXEL_COUNT 1                     // How many neopixels are connected
+// #define NEOPIXEL_DATA 21                     // gpio pin used to send data to the neopixels
+// #define NEOPIXEL_TYPE (NEO_RGB + NEO_KHZ800) // type of neopixels in use
 //************************************************  END LED  ***************************************************/
 
 
