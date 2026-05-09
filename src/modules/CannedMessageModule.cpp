@@ -36,7 +36,7 @@
 
 #include "graphics/ScreenFonts.h"
 #include <Throttle.h>
-
+#include "USB_keyboard/CyrillicExtension.h"
 // Remove Canned message screen if no action is taken for some milliseconds
 #define INACTIVATE_AFTER_MS 20000
 
@@ -318,6 +318,15 @@ int CannedMessageModule::handleInputEvent(const InputEvent *event)
         return 0;
     }
 
+    // --- 1. ПЕРЕХВАТ СМЕНЫ РАСКЛАДКИ (НАША ПРАВКА) ---
+    // Это должно стоять в самом начале, чтобы работать в любом состоянии модуля
+    if (event->inputEvent == INPUT_BROKER_LAYOUT_CHANGE) {
+        CyrillicExtension::toggleLayout(); // Переключаем флаг EN/UA в твоем классе
+        lastTouchMillis = millis();        // Сбрасываем таймер активности
+        requestFocus();                    // Запрашиваем обновление фокуса (перерисовку)
+        return 1;                          // Событие обработано
+    }
+
     // Tab key: Always allow switching between canned/destination screens
     if (event->kbchar == INPUT_BROKER_MSG_TAB && handleTabSwitch(event))
         return 1;
@@ -375,13 +384,21 @@ int CannedMessageModule::handleInputEvent(const InputEvent *event)
         }
         // Printable char (ASCII) opens free text compose
         if (event->kbchar >= 32 && event->kbchar <= 126) {
+            if (runState == CANNED_MESSAGE_RUN_STATE_INACTIVE) {
             runState = CANNED_MESSAGE_RUN_STATE_FREETEXT;
-            requestFocus();
-            UIFrameEvent e;
-            e.action = UIFrameEvent::Action::REGENERATE_FRAMESET;
-            notifyObservers(&e);
-            // Immediately process the input in the new state (freetext)
+            freetext = ""; // Очищаем строку перед началом ввода
+            cursor = 0;    // Сбрасываем курсор в начало строки
+            requestFocus(); // Запрашиваем фокус ввода
+            
+            // UIFrameEvent e;
+            // e.action = UIFrameEvent::Action::REGENERATE_FRAMESET;
+            // notifyObservers(&e);
+
+            // Сразу вызываем обработчик ввода, чтобы первая нажатая буква не потерялась
             return handleFreeTextInput(event);
+        }
+            // Теперь, когда окно открыто, вызываем обработчик, который посмотрит на нашу раскладку
+            //return handleFreeTextInput(event);
         }
         break;
 
@@ -834,6 +851,18 @@ bool CannedMessageModule::handleFreeTextInput(const InputEvent *event)
 
     // Backspace
     if (event->inputEvent == INPUT_BROKER_BACK && this->freetext.length() > 0) {
+        if (CyrillicExtension::isCyrillic) {
+            // Находим индекс начала предыдущего UTF-8 символа (чтобы удалить букву целиком)
+            int prevIdx = CyrillicExtension::getPrevUtf8Index(freetext, cursor);
+            freetext = freetext.substring(0, prevIdx) + freetext.substring(cursor);
+            cursor = prevIdx;
+            lastTouchMillis = millis();
+            
+            UIFrameEvent e;
+            e.action = UIFrameEvent::Action::REGENERATE_FRAMESET;
+            notifyObservers(&e);
+            return true;
+        }
         payload = 0x08;
         lastTouchMillis = millis();
         runOnce();
@@ -879,6 +908,29 @@ bool CannedMessageModule::handleFreeTextInput(const InputEvent *event)
 
     // Printable ASCII (add char to draft)
     if (event->kbchar >= 32 && event->kbchar <= 126) {
+        // --- НАША ПРАВКА: Печать символов (ASCII + Кириллица) ---
+        const char* translated = CyrillicExtension::translateKey(event->kbchar);
+        if (translated) {
+            // Если включена кириллица — вставляем строку напрямую, обходя payload
+            freetext = freetext.substring(0, cursor) + translated + freetext.substring(cursor);
+            cursor += strlen(translated); // Сдвигаем курсор на длину вставленной UTF-8 строки
+            lastTouchMillis = millis(); // Обновляем таймер активности
+
+            // Нам нужно принудительно обновить экран, так как мы не вызывали runOnce()
+            UIFrameEvent e;
+            e.action = UIFrameEvent::Action::REGENERATE_FRAMESET;
+            notifyObservers(&e);
+
+            // --- НОВЫЙ КОД ПРОБУЖДЕНИЯ ЭКРАНА ---
+            if (screen) {
+                screen->forceDisplay(); // Принудительно будим и включаем дисплей
+            }
+            payload = 0; // Ставим пустой пейлоад, чтобы система не вставила мусор
+            //runOnce();   // Прокручиваем внутренний цикл, чтобы интерфейс "ожил"
+            //
+            return true; 
+        }
+        // Если латиница — работаем через стандартный payload, который обработает runOnce() и отрисует символ
         payload = event->kbchar;
         lastTouchMillis = millis();
         runOnce();
@@ -2293,10 +2345,25 @@ void CannedMessageModule::handleSetCannedMessageModuleMessages(const char *from_
     }
 }
 
+
+
 String CannedMessageModule::drawWithCursor(String text, int cursor)
 {
-    String result = text.substring(0, cursor) + "_" + text.substring(cursor);
-    return result;
+    // String result = text.substring(0, cursor) + "_" + text.substring(cursor);
+    // return result;
+    // Если курсор почему-то попал на второй байт кириллической буквы,
+    // мы его принудительно корректируем в начало символа.
+    if (cursor > 0 && cursor < (int)text.length()) {
+        const char *buf = text.c_str();
+        if (((uint8_t)buf[cursor] & 0xC0) == 0x80) { // Это байт продолжения UTF-8
+             cursor = CyrillicExtension::getPrevUtf8Index(text, cursor);
+        }
+    }
+
+    String left = text.substring(0, cursor);
+    String right = text.substring(cursor);
+    
+    return left + "_" + right;
 }
 
 #endif

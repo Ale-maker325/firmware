@@ -3,6 +3,7 @@
 #include "Observer.h"
 #include "freertosinc.h"
 
+
 enum input_broker_event {
     INPUT_BROKER_NONE = 0,
     INPUT_BROKER_SELECT = 10,
@@ -22,8 +23,10 @@ enum input_broker_event {
     INPUT_BROKER_GPS_TOGGLE = 0x9e,
     INPUT_BROKER_SEND_PING = 0xaf,
     INPUT_BROKER_MATRIXKEY = 0xFE,
-    INPUT_BROKER_ANYKEY = 0xff
-
+    INPUT_BROKER_ANYKEY = 0xff,
+    // Наша изоляция:
+    // Просто добавляем константу. Число 0xB2 мы выбрали как безопасное.
+    INPUT_BROKER_LAYOUT_CHANGE = 0xB2,
 };
 
 #define INPUT_BROKER_MSG_BRIGHTNESS_UP 0x11
@@ -35,6 +38,24 @@ enum input_broker_event {
 #define INPUT_BROKER_MSG_BLUETOOTH_TOGGLE 0xAA
 #define INPUT_BROKER_MSG_TAB 0x09
 #define INPUT_BROKER_MSG_EMOTE_LIST 0x8F
+
+/**
+ * @brief Анализ структуры InputEvent
+ * В файле InputBroker.h описано, как именно Meshtastic упаковывает каждое нажатие клавиши:
+ *  - unsigned char kbchar: Вот наш главный "подозреваемый". Тип unsigned char в C++ — это строго 8 бит (один байт). 
+ *    Это подтверждает, что за один раз система может передать только значение от 0 до 255.
+ *  - input_broker_event inputEvent: Это тип события (нажатие, долгое нажатие и т.д.). Для обычных клавиш здесь используется значение
+ *    INPUT_BROKER_ANYKEY = 0xff.  
+ *  - const char *source: Имя устройства, которое прислало данные (например, "CardKB").  
+ * 2. Как работает InputBroker
+ * Этот модуль работает как диспетчер или "почтовое отделение":
+ *  - Регистрация: Различные драйверы (как тот I2C-драйвер, что мы смотрели раньше) регистрируются через registerSource().
+ *  - Обработка: Когда ты нажимаешь клавишу, вызывается handleInputEvent().
+ *  - Пробуждение: Любой ввод вызывает powerFSM.trigger(EVENT_INPUT), что заставляет устройство выйти из режима сна.  
+ *  - Рассылка: Самое важное — команда this->notifyObservers(event). InputBroker сам не решает, что делать с буквой "А" или "Ї". 
+ *    Он просто кричит всем остальным модулям: "Эй, пришел байт такой-то, кто его ждет?". 
+ * 
+ */
 
 typedef struct _InputEvent {
     const char *source;
