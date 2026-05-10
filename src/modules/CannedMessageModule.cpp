@@ -2463,14 +2463,38 @@ void CannedMessageModule::drawFrame(OLEDDisplay *display, OLEDDisplayUiState *st
             yCursor += rowHeight;
         }
 
-        // Scrollbar
-        if (messagesCount > _visibleRows) {
+        // // Scrollbar
+        // if (messagesCount > _visibleRows) {
+        //     int scrollHeight = display->getHeight() - listYOffset;
+        //     int scrollTrackX = display->getWidth() - 6;
+        //     display->drawRect(scrollTrackX, listYOffset, 4, scrollHeight);
+        //     int barHeight = (scrollHeight * _visibleRows) / messagesCount;
+        //     int scrollPos = listYOffset + (scrollHeight * topMsg) / messagesCount;
+        //     display->fillRect(scrollTrackX, scrollPos, 4, barHeight);
+        // }
+        // ЗАМЕНИТЬ НА ЭТО:
+        
+        // --- БЕЗОПАСНЫЙ РАСЧЕТ СКРОЛЛБАРА ---
+        // Делаем копию, чтобы избежать изменения значения другим потоком (Race Condition)
+        int countCopy = messagesCount; 
+        
+        if (countCopy > _visibleRows && countCopy > 0) {
             int scrollHeight = display->getHeight() - listYOffset;
             int scrollTrackX = display->getWidth() - 6;
+            
+            // Рисуем рамку дорожки скроллбара
             display->drawRect(scrollTrackX, listYOffset, 4, scrollHeight);
-            int barHeight = (scrollHeight * _visibleRows) / messagesCount;
-            int scrollPos = listYOffset + (scrollHeight * topMsg) / messagesCount;
-            display->fillRect(scrollTrackX, scrollPos, 4, barHeight);
+            
+            // Проверка, чтобы точно не делить на ноль
+            if (countCopy > 0) {
+                // Вычисляем высоту ползунка
+                int barHeight = (scrollHeight * _visibleRows) / countCopy;
+                // Вычисляем позицию ползунка
+                int scrollPos = listYOffset + (scrollHeight * topMsg) / countCopy;
+                
+                // Рисуем заполненный ползунок
+                display->fillRect(scrollTrackX, scrollPos, 4, barHeight);
+            }
         }
     }
 }
@@ -2635,42 +2659,60 @@ void CannedMessageModule::handleSetCannedMessageModuleMessages(const char *from_
 
 
 
+// String CannedMessageModule::drawWithCursor(String text, int cursor)
+// {
+//     // String result = text.substring(0, cursor) + "_" + text.substring(cursor);
+//     // return result;
+//     // // Если курсор почему-то попал на второй байт кириллической буквы,
+//     // // мы его принудительно корректируем в начало символа.
+//     // if (cursor > 0 && cursor < (int)text.length()) {
+//     //     const char *buf = text.c_str();
+//     //     if (((uint8_t)buf[cursor] & 0xC0) == 0x80) { // Это байт продолжения UTF-8
+//     //          cursor = CyrillicExtension::getPrevUtf8Index(text, cursor);
+//     //     }
+//     // }
+//     // String left = text.substring(0, cursor);
+//     // String right = text.substring(cursor);
+//     // return left + "_" + right;
+//     if (cursor <= 0)
+//         return "_" + text;
+//     int len = text.length();
+//     if (cursor >= len)
+//         return text + "_";
+//     // Проверка: не попали ли мы внутрь UTF-8 символа (байты 10xxxxxx)
+//     const char* buf = text.c_str();
+//     int adjCursor = cursor;
+//     while (adjCursor > 0 && ((buf[adjCursor] & 0xC0) == 0x80)) {
+//         adjCursor--; 
+//     }
+//     return text.substring(0, adjCursor) + "_" + text.substring(adjCursor);
+// }
+
+
+
 String CannedMessageModule::drawWithCursor(String text, int cursor)
 {
-    // String result = text.substring(0, cursor) + "_" + text.substring(cursor);
-    // return result;
+    // ШАГ 0: Нормализация. Если из украинской раскладки прилетел 
+    // двухбайтовый "неразрывный пробел" (\xc2\xa0), заменяем его на обычный.
+    text.replace("\xc2\xa0", " ");
 
-
-
-    // // Если курсор почему-то попал на второй байт кириллической буквы,
-    // // мы его принудительно корректируем в начало символа.
-    // if (cursor > 0 && cursor < (int)text.length()) {
-    //     const char *buf = text.c_str();
-    //     if (((uint8_t)buf[cursor] & 0xC0) == 0x80) { // Это байт продолжения UTF-8
-    //          cursor = CyrillicExtension::getPrevUtf8Index(text, cursor);
-    //     }
-    // }
-    // String left = text.substring(0, cursor);
-    // String right = text.substring(cursor);
-    // return left + "_" + right;
-
-
-    if (cursor <= 0)
+    if (cursor <= 0 || text.length() == 0)
         return "_" + text;
     
     int len = text.length();
     if (cursor >= len)
         return text + "_";
 
-    // Проверка: не попали ли мы внутрь UTF-8 символа (байты 10xxxxxx)
     const char* buf = text.c_str();
     int adjCursor = cursor;
+    
+    // Безопасная корректировка для UTF-8
     while (adjCursor > 0 && ((buf[adjCursor] & 0xC0) == 0x80)) {
         adjCursor--; 
     }
 
+    // Собираем финальную строку для экрана
     return text.substring(0, adjCursor) + "_" + text.substring(adjCursor);
-    
 }
 
 #endif
