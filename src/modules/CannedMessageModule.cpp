@@ -354,9 +354,130 @@ int CannedMessageModule::handleInputEvent(const InputEvent *event)
             return 1;
         return 0; // prevent fall-through to selector input
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     // Free text input mode: Handles character input, cancel, backspace, select, etc.
     case CANNED_MESSAGE_RUN_STATE_FREETEXT:
-        return handleFreeTextInput(event); // All allowed input for this state
+        // 1. ВВОД СИМВОЛОВ И ПРОБЕЛА
+        if (event->kbchar > 0) {
+            const char *cyrillic = CyrillicExtension::translateKey((char)event->kbchar);
+            
+            if (cyrillic != nullptr) {
+                freetext = freetext.substring(0, this->cursor) + cyrillic + freetext.substring(this->cursor);
+                this->cursor += strlen(cyrillic);
+            } else {
+                freetext = freetext.substring(0, this->cursor) + (char)event->kbchar + freetext.substring(this->cursor);
+                this->cursor++;
+            }
+
+            // ХАК 1: Очищаем payload! Это убьет "призрачные" первые буквы и лишние пробелы
+            this->payload = 0; 
+            
+            // УСКОРИТЕЛЬ (работает без тормозов)
+            this->lastTouchMillis = millis();
+            // Принудительно удерживаем фокус на нашем окне!
+            requestFocus();
+            if (screen) screen->forceDisplay();
+            runOnce();
+
+            return true;
+        }
+
+        // 2. СМЕНА РАСКЛАДКИ
+        if (event->inputEvent == INPUT_BROKER_LAYOUT_CHANGE) {
+            CyrillicExtension::toggleLayout();
+            
+            this->payload = 0; // На всякий случай чистим и здесь
+            this->lastTouchMillis = millis();
+            // Принудительно удерживаем фокус на нашем окне!
+            requestFocus();
+            if (screen) screen->forceDisplay();
+            runOnce();
+            
+            return true;
+        }
+
+        // 3. БЕЗОПАСНЫЙ BACKSPACE (Защита от вылетов)
+        if (event->inputEvent == INPUT_BROKER_BACK) {
+            // Если строка пустая - игнорируем, чтобы не вылететь в главное меню
+            if (this->freetext.length() == 0) {
+                return true; 
+            }
+
+            if (this->cursor > 0) {
+                // Универсальное удаление (работает и для латиницы, и для кириллицы)
+                int prevIdx = CyrillicExtension::getPrevUtf8Index(freetext, this->cursor);
+                freetext = freetext.substring(0, prevIdx) + freetext.substring(this->cursor);
+                this->cursor = prevIdx;
+
+                this->payload = 0; // Обязательно блокируем payload
+                this->lastTouchMillis = millis();
+                // Принудительно удерживаем фокус на нашем окне!
+                requestFocus();
+                if (screen) screen->forceDisplay();
+                runOnce();
+            }
+            return true;
+        }
+
+        // 4. Все остальные кнопки (Enter для отправки, стрелки влево/вправо, Cancel)
+        // отдаем родному обработчику
+        return handleFreeTextInput(event);
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     // Virtual keyboard mode: Show virtual keyboard and handle input
 
@@ -909,6 +1030,7 @@ bool CannedMessageModule::handleFreeTextInput(const InputEvent *event)
     // Printable ASCII (add char to draft)
     if (event->kbchar >= 32 && event->kbchar <= 126) {
         // --- НАША ПРАВКА: Печать символов (ASCII + Кириллица) ---
+        
         const char* translated = CyrillicExtension::translateKey(event->kbchar);
         if (translated) {
             // Если включена кириллица — вставляем строку напрямую, обходя payload
@@ -1761,6 +1883,22 @@ void CannedMessageModule::drawEmotePickerScreen(OLEDDisplay *display, OLEDDispla
     }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 void CannedMessageModule::drawFrame(OLEDDisplay *display, OLEDDisplayUiState *state, int16_t x, int16_t y)
 {
     this->displayHeight = display->getHeight(); // Store display height for later use
@@ -1953,6 +2091,37 @@ void CannedMessageModule::drawFrame(OLEDDisplay *display, OLEDDisplayUiState *st
             std::vector<std::pair<bool, String>> currentLine;
             int lineWidth = 0;
             int maxWidth = display->getWidth();
+
+            // --- УЛУЧШЕННЫЙ замер ширины (исправление пробела) ---
+            auto getTrueWidth = [&](const String &s) -> int {
+                int totalW = 0;
+                for (int i = 0; i < (int)s.length(); ) {
+                    uint8_t b = (uint8_t)s[i];
+                    
+                    // ЕСЛИ ЭТО ПРОБЕЛ (ASCII 32)
+                    if (b == 32) {
+                        totalW += display->getStringWidth(" "); // Берем стандартную ширину пробела
+                        i++; 
+                        continue;
+                    }
+
+                    int charSize = 1;
+                    if ((b & 0xE0) == 0xC0) charSize = 2;
+                    else if ((b & 0xF0) == 0xE0) charSize = 3;
+                    else if ((b & 0xF8) == 0xF0) charSize = 4;
+                    
+                    String oneChar = s.substring(i, i + charSize);
+                    int w = display->getStringWidth(oneChar);
+                    
+                    // Для многобайтовых символов убираем ложное удвоение
+                    if (charSize > 1) w = w / charSize; 
+                    
+                    totalW += w;
+                    i += charSize;
+                }
+                return totalW;
+            };
+
             for (auto &token : tokens) {
                 if (token.first) {
                     // Emote
@@ -1979,29 +2148,134 @@ void CannedMessageModule::drawFrame(OLEDDisplay *display, OLEDDisplayUiState *st
                         int spacePos = text.indexOf(' ', pos);
                         int endPos = (spacePos == -1) ? text.length() : spacePos + 1; // Include space
                         String word = text.substring(pos, endPos);
-                        int wordWidth = display->getStringWidth(word);
+                        // int wordWidth = display->getStringWidth(word);
+                        int wordWidth = getTrueWidth(word); // НАША ПРАВКА (было display->getStringWidth)
 
                         if (lineWidth + wordWidth > maxWidth && lineWidth > 0) {
                             lines.push_back(currentLine);
                             currentLine.clear();
                             lineWidth = 0;
                         }
-                        // If word itself too big, split by character
+                        // // If word itself too big, split by character
+                        // if (wordWidth > maxWidth) {
+                        //     uint16_t charPos = 0;
+                        //     while (charPos < word.length()) {
+                        //         String oneChar = word.substring(charPos, charPos + 1);
+                        //         int charWidth = display->getStringWidth(oneChar);
+                        //         if (lineWidth + charWidth > maxWidth && lineWidth > 0) {
+                        //             lines.push_back(currentLine);
+                        //             currentLine.clear();
+                        //             lineWidth = 0;
+                        //         }
+                        //         currentLine.push_back({false, oneChar});
+                        //         lineWidth += charWidth;
+                        //         charPos++;
+                        //     }
+                        // } 
+                        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
                         if (wordWidth > maxWidth) {
                             uint16_t charPos = 0;
+                            String wordChunk = ""; // Накапливаем символы здесь
+                            int chunkWidth = 0;
+
                             while (charPos < word.length()) {
-                                String oneChar = word.substring(charPos, charPos + 1);
-                                int charWidth = display->getStringWidth(oneChar);
-                                if (lineWidth + charWidth > maxWidth && lineWidth > 0) {
+                                uint8_t firstByte = word[charPos];
+                                int charSize = 1;
+                                if ((firstByte & 0xE0) == 0xC0) charSize = 2;
+                                else if ((firstByte & 0xF0) == 0xE0) charSize = 3;
+                                else if ((firstByte & 0xF0) == 0xF0) charSize = 4;
+
+                                String oneChar = word.substring(charPos, charPos + charSize);
+                                
+                                // int charW = display->getStringWidth(oneChar);
+                                int charW = getTrueWidth(oneChar); // НАША ПРАВКА (было display->getStringWidth) // Если добавление символа превысит ширину строки
+
+                                // Если добавление символа превысит ширину строки
+                                if (lineWidth + chunkWidth + charW > maxWidth && (lineWidth + chunkWidth) > 0) {
+                                    // Сохраняем то, что накопили
+                                    if (wordChunk.length() > 0) {
+                                        currentLine.push_back({false, wordChunk});
+                                    }
+                                    // Переходим на новую строку
                                     lines.push_back(currentLine);
                                     currentLine.clear();
                                     lineWidth = 0;
+                                    wordChunk = oneChar;
+                                    chunkWidth = charW;
+                                } else {
+                                    // Продолжаем накапливать слово без пробелов
+                                    wordChunk += oneChar;
+                                    chunkWidth += charW;
                                 }
-                                currentLine.push_back({false, oneChar});
-                                lineWidth += charWidth;
-                                charPos++;
+                                charPos += charSize;
                             }
-                        } else {
+                            // Добавляем остаток слова в текущую линию
+                            if (wordChunk.length() > 0) {
+                                currentLine.push_back({false, wordChunk});
+                                lineWidth += chunkWidth;
+                            }
+                        }
+
+
+            
+            // --- НАШ ИСПРАВЛЕННЫЙ КОД КОНЕЦ ---
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                        
+                        else {
                             currentLine.push_back({false, word});
                             lineWidth += wordWidth;
                         }
@@ -2033,7 +2307,8 @@ void CannedMessageModule::drawFrame(OLEDDisplay *display, OLEDDisplayUiState *st
                         }
                     } else {
                         display->drawString(nextX, yLine, token.second);
-                        nextX += display->getStringWidth(token.second);
+                        // nextX += display->getStringWidth(token.second);
+                        nextX += getTrueWidth(token.second); // НАША ПРАВКА (было display->getStringWidth)
                     }
                 }
                 yLine += rowHeight;
@@ -2200,6 +2475,19 @@ void CannedMessageModule::drawFrame(OLEDDisplay *display, OLEDDisplayUiState *st
     }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 ProcessMessage CannedMessageModule::handleReceived(const meshtastic_MeshPacket &mp)
 {
     if (mp.decoded.portnum == meshtastic_PortNum_ROUTING_APP && waitingForAck) {
@@ -2351,19 +2639,38 @@ String CannedMessageModule::drawWithCursor(String text, int cursor)
 {
     // String result = text.substring(0, cursor) + "_" + text.substring(cursor);
     // return result;
-    // Если курсор почему-то попал на второй байт кириллической буквы,
-    // мы его принудительно корректируем в начало символа.
-    if (cursor > 0 && cursor < (int)text.length()) {
-        const char *buf = text.c_str();
-        if (((uint8_t)buf[cursor] & 0xC0) == 0x80) { // Это байт продолжения UTF-8
-             cursor = CyrillicExtension::getPrevUtf8Index(text, cursor);
-        }
+
+
+
+    // // Если курсор почему-то попал на второй байт кириллической буквы,
+    // // мы его принудительно корректируем в начало символа.
+    // if (cursor > 0 && cursor < (int)text.length()) {
+    //     const char *buf = text.c_str();
+    //     if (((uint8_t)buf[cursor] & 0xC0) == 0x80) { // Это байт продолжения UTF-8
+    //          cursor = CyrillicExtension::getPrevUtf8Index(text, cursor);
+    //     }
+    // }
+    // String left = text.substring(0, cursor);
+    // String right = text.substring(cursor);
+    // return left + "_" + right;
+
+
+    if (cursor <= 0)
+        return "_" + text;
+    
+    int len = text.length();
+    if (cursor >= len)
+        return text + "_";
+
+    // Проверка: не попали ли мы внутрь UTF-8 символа (байты 10xxxxxx)
+    const char* buf = text.c_str();
+    int adjCursor = cursor;
+    while (adjCursor > 0 && ((buf[adjCursor] & 0xC0) == 0x80)) {
+        adjCursor--; 
     }
 
-    String left = text.substring(0, cursor);
-    String right = text.substring(cursor);
+    return text.substring(0, adjCursor) + "_" + text.substring(adjCursor);
     
-    return left + "_" + right;
 }
 
 #endif
