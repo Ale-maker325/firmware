@@ -43,6 +43,7 @@ extern MessageStore messageStore;
 
 #include "graphics/ScreenFonts.h"
 #include <Throttle.h>
+#include "USB_keyboard/CyrillicExtension.h"
 
 // Remove Canned message screen if no action is taken for some milliseconds
 #define INACTIVATE_AFTER_MS 20000
@@ -414,6 +415,18 @@ int CannedMessageModule::handleInputEvent(const InputEvent *event)
         return 0;
     }
 
+    // --- 1. ПЕРЕХВАТ СМЕНЫ РАСКЛАДКИ (НАША ПРАВКА) ---
+    if (event->inputEvent == INPUT_BROKER_LAYOUT_CHANGE) {
+        CyrillicExtension::toggleLayout();
+        lastTouchMillis = millis();
+        requestFocus();
+        UIFrameEvent e;
+        e.action = UIFrameEvent::Action::REGENERATE_FRAMESET;
+        notifyObservers(&e);
+        if (screen) screen->forceDisplay();
+        return 1;
+    }
+
     // Tab key: Always allow switching between canned/destination screens
     if (event->kbchar == INPUT_BROKER_MSG_TAB && handleTabSwitch(event))
         return 1;
@@ -442,7 +455,68 @@ int CannedMessageModule::handleInputEvent(const InputEvent *event)
 
     // Free text input mode: Handles character input, cancel, backspace, select, etc.
     case CANNED_MESSAGE_RUN_STATE_FREETEXT:
-        return handleFreeTextInput(event); // All allowed input for this state
+        //return handleFreeTextInput(event); // All allowed input for this state
+        // 1. ВВОД СИМВОЛОВ И ПРОБЕЛА
+        if (event->kbchar > 0) {
+            const char *cyrillic = CyrillicExtension::translateKey((char)event->kbchar);
+
+            if (cyrillic != nullptr) {
+                freetext = freetext.substring(0, this->cursor) + cyrillic + freetext.substring(this->cursor);
+                this->cursor += strlen(cyrillic);
+            } else {
+                freetext = freetext.substring(0, this->cursor) + (char)event->kbchar + freetext.substring(this->cursor);
+                this->cursor++;
+            }
+
+            // ХАК 1: Очищаем payload! Это убьет "призрачные" первые буквы и лишние пробелы
+            this->payload = 0; 
+
+            // УСКОРИТЕЛЬ (работает без тормозов)
+            this->lastTouchMillis = millis();
+            // Принудительно удерживаем фокус на нашем окне!
+            requestFocus();
+            if (screen) screen->forceDisplay();
+            runOnce();
+
+            return true;
+        }
+
+        // 2. СМЕНА РАСКЛАДКИ
+        if (event->inputEvent == INPUT_BROKER_LAYOUT_CHANGE) {
+            CyrillicExtension::toggleLayout();
+
+            this->payload = 0; // На всякий случай чистим и здесь
+            this->lastTouchMillis = millis();
+            // Принудительно удерживаем фокус на нашем окне!
+            requestFocus();
+            if (screen) screen->forceDisplay();
+            runOnce();
+
+            return true;
+        }
+
+        // 3. БЕЗОПАСНЫЙ BACKSPACE (Защита от вылетов)
+        // Backspace с UTF-8 поддержкой
+        if (event->inputEvent == INPUT_BROKER_BACK && this->freetext.length() > 0) {
+            if (CyrillicExtension::isCyrillic) {
+                int prevIdx = CyrillicExtension::getPrevUtf8Index(freetext, cursor);
+                freetext = freetext.substring(0, prevIdx) + freetext.substring(cursor);
+                cursor = prevIdx;
+            } else if (cursor > 0) {
+                freetext = freetext.substring(0, cursor - 1) + freetext.substring(cursor);
+                cursor--;
+            }
+            lastTouchMillis = millis();
+            UIFrameEvent e;
+            e.action = UIFrameEvent::Action::REGENERATE_FRAMESET;
+            notifyObservers(&e);
+            if (screen) screen->forceDisplay();
+            return true;
+        }
+
+        // 4. Все остальные кнопки (Enter для отправки, стрелки влево/вправо, Cancel)
+        // отдаем родному обработчику
+        return handleFreeTextInput(event);
 
     // Virtual keyboard mode: Show virtual keyboard and handle input
 
@@ -461,12 +535,20 @@ int CannedMessageModule::handleInputEvent(const InputEvent *event)
         }
         // Printable char (ASCII) opens free text compose
         if (event->kbchar >= 32 && event->kbchar <= 126) {
+            if (runState == CANNED_MESSAGE_RUN_STATE_INACTIVE) {
             updateState(CANNED_MESSAGE_RUN_STATE_FREETEXT, true);
-            UIFrameEvent e;
-            e.action = UIFrameEvent::Action::REGENERATE_FRAMESET;
-            notifyObservers(&e);
+
+            // UIFrameEvent e;
+            // e.action = UIFrameEvent::Action::REGENERATE_FRAMESET;
+            // notifyObservers(&e);
             // Immediately process the input in the new state (freetext)
+
+            freetext = ""; // Очищаем строку перед началом ввода
+            cursor = 0;    // Сбрасываем курсор в начало строки
+            requestFocus(); // Запрашиваем фокус ввода
+            // Сразу вызываем обработчик ввода, чтобы первая нажатая буква не потерялась
             return handleFreeTextInput(event);
+            }
         }
         return 0;
         break;
@@ -925,6 +1007,18 @@ bool CannedMessageModule::handleFreeTextInput(const InputEvent *event)
 
     // Backspace
     if (event->inputEvent == INPUT_BROKER_BACK && this->freetext.length() > 0) {
+        if (CyrillicExtension::isCyrillic) {
+            // Находим индекс начала предыдущего UTF-8 символа (чтобы удалить букву целиком)
+            int prevIdx = CyrillicExtension::getPrevUtf8Index(freetext, cursor);
+            freetext = freetext.substring(0, prevIdx) + freetext.substring(cursor);
+            cursor = prevIdx;
+            lastTouchMillis = millis();
+
+            UIFrameEvent e;
+            e.action = UIFrameEvent::Action::REGENERATE_FRAMESET;
+            notifyObservers(&e);
+            return true;
+        }
         payload = 0x08;
         lastTouchMillis = millis();
         requestFocus();
@@ -972,10 +1066,22 @@ bool CannedMessageModule::handleFreeTextInput(const InputEvent *event)
     }
 
     // Printable ASCII (add char to draft)
+    // Printable ASCII + Cyrillic
     if (event->kbchar >= 32 && event->kbchar <= 126) {
-        payload = event->kbchar;
+        const char* translated = CyrillicExtension::translateKey(event->kbchar);
+        if (translated) {
+            freetext = freetext.substring(0, cursor) + translated + freetext.substring(cursor);
+            cursor += strlen(translated);
+        } else {
+            freetext = freetext.substring(0, cursor) + (char)event->kbchar + freetext.substring(cursor);
+            cursor++;
+        }
         lastTouchMillis = millis();
-        runOnce();
+        UIFrameEvent e;
+        e.action = UIFrameEvent::Action::REGENERATE_FRAMESET;
+        notifyObservers(&e);
+        if (screen) screen->forceDisplay();
+        payload = 0;
         return true;
     }
 
@@ -2377,8 +2483,22 @@ void CannedMessageModule::handleSetCannedMessageModuleMessages(const char *from_
 
 String CannedMessageModule::drawWithCursor(String text, int cursor)
 {
-    String result = text.substring(0, cursor) + "_" + text.substring(cursor);
-    return result;
+    text.replace("\xc2\xa0", " "); // Нормализация
+
+    if (cursor <= 0 || text.length() == 0)
+        return "_" + text;
+    
+    int len = text.length();
+    if (cursor >= len)
+        return text + "_";
+
+    const char* buf = text.c_str();
+    int adjCursor = cursor;
+    while (adjCursor > 0 && ((buf[adjCursor] & 0xC0) == 0x80)) {
+        adjCursor--; 
+    }
+
+    return text.substring(0, adjCursor) + "_" + text.substring(adjCursor);
 }
 
 #endif

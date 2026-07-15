@@ -35,7 +35,8 @@ enum input_broker_event {
     INPUT_BROKER_FN_F4 = 0xf4,
     INPUT_BROKER_FN_F5 = 0xf5,
     INPUT_BROKER_MATRIXKEY = 0xFE,
-    INPUT_BROKER_ANYKEY = 0xff
+    INPUT_BROKER_ANYKEY = 0xff,
+    INPUT_BROKER_LAYOUT_CHANGE = 0xB2, //USB keyboard change layout event
 
 };
 
@@ -49,6 +50,23 @@ enum input_broker_event {
 #define INPUT_BROKER_MSG_TAB 0x09
 #define INPUT_BROKER_MSG_EMOTE_LIST 0x8F
 
+/* *
+* @brief Анализ структуры InputEvent
+* В файле InputBroker.h записана, как именно Meshtastic упаковывает каждую ручку клавиатуры:
+* - беззнаковый символ kbchar: Вот наш главный "подозрительный". Тип unsigned char в C++ — это строго 8 бит (один байт).
+* Это подтверждение, что за один раз система может передавать только значения от 0 до 255.
+* - input_broker_event inputEvent: Это тип событий (нажатие, высокая волна и т.д.). Для обычных клавиш здесь используется значение
+* INPUT_BROKER_ANYKEY = 0xff.  
+* - const char *source: Имя устройства, которому прислало данные (например, «CardKB»).  
+* 2. Как работает InputBroker
+* Этот модуль работает как диспетчер или «почтовое отделение»:
+* - Регистрация: Различные драйверы (как тот I2C-драйвер, который мы смотрели раньше) регистрируются через RegisterSource().
+* - Обработка: Когда ты нажимаешь на поддержку, возникает handleInputEvent().
+* - Пробуждение: Любой ввод вызывает powerFSM.trigger(EVENT_INPUT), который заставляет устройство выйти из режима сна.  
+* - Рассылка: Самая сильная — команда this->notifyObservers(event). InputBroker сам не решает, что делать с буквой «А» или «Ї».
+* Он просто кричит всем коронавирусным модулям: «Эй, пришел байт такой-то, кто его ждет?».
+*
+ */
 typedef struct _InputEvent {
     const char *source;
     input_broker_event inputEvent;

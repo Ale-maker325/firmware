@@ -390,10 +390,19 @@ int32_t KbI2cBase::runOnce()
     case 0x00:   // CARDKB
     case 0x10: { // T-DECK
 
-        i2cBus->requestFrom((int)cardkb_found.address, 1);
+        // i2cBus->requestFrom((int)cardkb_found.address, 1);
+        // 1. ЗАПРАШИВАЕМ СРАЗУ 4 БАЙТА (с запасом для UTF-8)
+        i2cBus->requestFrom((int)cardkb_found.address, 4);
 
-        if (i2cBus->available()) {
+        // 2. ВАЖНО: Используем цикл WHILE! 
+        // Пока в буфере I2C есть доступные байты, мы будем их вычитывать и отправлять в систему
+        while (i2cBus->available()) {
+        // if (i2cBus->available()) {
             char c = i2cBus->read();
+            // Если клавиатура вернула пустоту - выходим из цикла до следующего опроса
+            if (c == 0x00) {
+                break; 
+            }
             InputEvent e = {};
             e.inputEvent = INPUT_BROKER_NONE;
             e.source = this->_originName;
@@ -525,8 +534,21 @@ int32_t KbI2cBase::runOnce()
             case 0x00: // nopress
                 e.inputEvent = INPUT_BROKER_NONE;
                 break;
+            case 0xF2: // Наш код с RP2350
+                e.inputEvent = INPUT_BROKER_LAYOUT_CHANGE;
+                break;
+            // default:           // all other keys
+            //     if (c > 127) { // bogus key value
+            //         e.inputEvent = INPUT_BROKER_NONE;
+            //         break;
+            //     }
+            //     e.inputEvent = INPUT_BROKER_ANYKEY;
+            //     e.kbchar = c;
+            //     is_sym = false;
+            //     break;
+            // }
             default:           // all other keys
-                if (c > 127) { // bogus key value
+                if ((uint8_t)c == 0xFF) { // Игнорируем только аппаратную ошибку шины
                     e.inputEvent = INPUT_BROKER_NONE;
                     break;
                 }
@@ -534,13 +556,15 @@ int32_t KbI2cBase::runOnce()
                 e.kbchar = c;
                 is_sym = false;
                 break;
-            }
+            }// Конец switch(c)
 
+            // 3. Отправляем событие брокеру. 
+            // Это находится ВНУТРИ цикла while, поэтому каждый прочитанный байт будет отправлен сразу!
             if (e.inputEvent != INPUT_BROKER_NONE) {
                 this->notifyObservers(&e);
             }
-        }
-        break;
+        }   // Конец цикла while (i2cBus->available())
+        break;  // Выход из case 0x00 / case 0x10
     }
     default:
         LOG_WARN("Unknown kb_model 0x%02x", kb_model);
