@@ -1,0 +1,65 @@
+diff --git a/src/input/kbI2cBase.cpp b/src/input/kbI2cBase.cpp
+index 510fb1e31..7fab3250e 100644
+--- a/src/input/kbI2cBase.cpp
++++ b/src/input/kbI2cBase.cpp
+@@ -2,6 +2,7 @@
+ #include "configuration.h"
+ #include "detect/ScanI2C.h"
+ #include "detect/ScanI2CTwoWire.h"
++#include "USB_keyboard/CyrillicExtension.h"
+ 
+ #if defined(T_DECK_PRO)
+ #include "TDeckProKeyboard.h"
+@@ -390,10 +391,18 @@ int32_t KbI2cBase::runOnce()
+     case 0x00:   // CARDKB
+     case 0x10: { // T-DECK
+ 
+-        i2cBus->requestFrom((int)cardkb_found.address, 1);
++        // Наша правка: у оригинала здесь было requestFrom(..., 1) и одиночный if.
++        // RP2350-клавиатура может за один опрос отдать несколько байт (например,
++        // байты многобайтового UTF-8 при наборе кириллицы), поэтому запрашиваем
++        // с запасом (4 байта) и вычитываем их в цикле, пока шина не опустеет.
++        i2cBus->requestFrom((int)cardkb_found.address, 4);
+ 
+-        if (i2cBus->available()) {
++        while (i2cBus->available()) {
+             char c = i2cBus->read();
++            // Пустой байт — клавиатуре больше нечего передать в этом опросе.
++            if (c == 0x00) {
++                break;
++            }
+             InputEvent e = {};
+             e.inputEvent = INPUT_BROKER_NONE;
+             e.source = this->_originName;
+@@ -525,8 +534,30 @@ int32_t KbI2cBase::runOnce()
+             case 0x00: // nopress
+                 e.inputEvent = INPUT_BROKER_NONE;
+                 break;
++            // Наша правка: коды 0xF2/0xF3/0xF4 шлёт кастомный контроллер клавиатуры
++            // на RP2350 (см. PROMPT_PROJECT_MESH.md) для переключения раскладки EN/UA.
++            case 0xF2: // toggle раскладки
++                e.inputEvent = INPUT_BROKER_LAYOUT_CHANGE;
++                break;
++            case 0xF3: // RP2350: принудительно EN
++                // LAYOUT_CHANGE в CannedMessageModule делает toggle —
++                // шлём событие только если сейчас UA, чтобы стать EN.
++                if (CyrillicExtension::isCyrillic)
++                    e.inputEvent = INPUT_BROKER_LAYOUT_CHANGE;
++                else
++                    e.inputEvent = INPUT_BROKER_NONE;
++                break;
++            case 0xF4: // RP2350: принудительно UA
++                if (!CyrillicExtension::isCyrillic)
++                    e.inputEvent = INPUT_BROKER_LAYOUT_CHANGE;
++                else
++                    e.inputEvent = INPUT_BROKER_NONE;
++                break;
+             default:           // all other keys
+-                if (c > 127) { // bogus key value
++                // Наша правка: было "c > 127" (отбрасывало все байты кириллицы
++                // из UTF-8 диапазона), стало — игнорируем только 0xFF
++                // (аппаратная ошибка шины), остальное пропускаем дальше.
++                if ((uint8_t)c == 0xFF) {
+                     e.inputEvent = INPUT_BROKER_NONE;
+                     break;
+                 }

@@ -163,3 +163,15 @@ int CyrillicExtension::getPrevUtf8Index(const String &s, int idx)
     }
     return i;
 }
+
+void CyrillicExtension::insertKey(String &text, unsigned int &cursor, uint8_t kbchar)
+{
+    const char *translated = translateKey((char)kbchar);
+    if (translated) {
+        text = text.substring(0, cursor) + translated + text.substring(cursor);
+        cursor += strlen(translated);
+    } else {
+        text = text.substring(0, cursor) + (char)kbchar + text.substring(cursor);
+        cursor++;
+    }
+}

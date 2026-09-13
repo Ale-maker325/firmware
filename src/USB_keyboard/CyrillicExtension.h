@@ -19,9 +19,19 @@ public:
     
     // Обработать нажатие клавиши: вернуть UTF-8 строку или NULL, если трансляция не нужна
     static const char* translateKey(char key);
-    
+
     // Вспомогательные функции для корректной работы Backspace с UTF-8
     static int getPrevUtf8Index(const String& s, int idx);
+
+    // Вставить нажатую клавишу в text по позиции cursor: если для неё есть
+    // кириллическая замена (см. translateKey) — вставляется она (2-3 байта
+    // UTF-8), иначе — исходный ASCII-символ (1 байт). cursor сдвигается на
+    // длину фактически вставленных байт. Вынесено сюда, чтобы не дублировать
+    // один и тот же кусок кода в нескольких местах CannedMessageModule.cpp.
+    // Тип параметра — unsigned int&, т.к. именно так объявлено поле
+    // CannedMessageModule::cursor (см. CannedMessageModule.h) — ссылка должна
+    // совпадать по типу, иначе компилятор не может её связать с полем.
+    static void insertKey(String& text, unsigned int& cursor, uint8_t kbchar);
 };
 
 #endif

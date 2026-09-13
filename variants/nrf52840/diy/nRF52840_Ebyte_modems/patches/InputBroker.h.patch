@@ -1,0 +1,14 @@
+diff --git a/src/input/InputBroker.h b/src/input/InputBroker.h
+index 975c9d9f4..d742e481e 100644
+--- a/src/input/InputBroker.h
++++ b/src/input/InputBroker.h
+@@ -35,7 +35,8 @@ enum input_broker_event {
+     INPUT_BROKER_FN_F4 = 0xf4,
+     INPUT_BROKER_FN_F5 = 0xf5,
+     INPUT_BROKER_MATRIXKEY = 0xFE,
+-    INPUT_BROKER_ANYKEY = 0xff
++    INPUT_BROKER_ANYKEY = 0xff,
++    INPUT_BROKER_LAYOUT_CHANGE = 0xB2, //USB keyboard change layout event
+ 
+ };
+ 

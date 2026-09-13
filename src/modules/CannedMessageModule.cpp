@@ -455,18 +455,11 @@ int CannedMessageModule::handleInputEvent(const InputEvent *event)
 
     // Free text input mode: Handles character input, cancel, backspace, select, etc.
     case CANNED_MESSAGE_RUN_STATE_FREETEXT:
-        //return handleFreeTextInput(event); // All allowed input for this state
+        // Наша правка: переключение раскладки (INPUT_BROKER_LAYOUT_CHANGE) сюда
+        // уже не заходит — оно перехватывается раньше, в начале handleInputEvent().
         // 1. ВВОД СИМВОЛОВ И ПРОБЕЛА
         if (event->kbchar > 0) {
-            const char *cyrillic = CyrillicExtension::translateKey((char)event->kbchar);
-
-            if (cyrillic != nullptr) {
-                freetext = freetext.substring(0, this->cursor) + cyrillic + freetext.substring(this->cursor);
-                this->cursor += strlen(cyrillic);
-            } else {
-                freetext = freetext.substring(0, this->cursor) + (char)event->kbchar + freetext.substring(this->cursor);
-                this->cursor++;
-            }
+            CyrillicExtension::insertKey(freetext, this->cursor, event->kbchar);
 
             // ХАК 1: Очищаем payload! Это убьет "призрачные" первые буквы и лишние пробелы
             this->payload = 0; 
@@ -481,21 +474,7 @@ int CannedMessageModule::handleInputEvent(const InputEvent *event)
             return true;
         }
 
-        // 2. СМЕНА РАСКЛАДКИ
-        if (event->inputEvent == INPUT_BROKER_LAYOUT_CHANGE) {
-            CyrillicExtension::toggleLayout();
-
-            this->payload = 0; // На всякий случай чистим и здесь
-            this->lastTouchMillis = millis();
-            // Принудительно удерживаем фокус на нашем окне!
-            requestFocus();
-            if (screen) screen->forceDisplay();
-            runOnce();
-
-            return true;
-        }
-
-        // 3. БЕЗОПАСНЫЙ BACKSPACE (Защита от вылетов)
+        // 2. БЕЗОПАСНЫЙ BACKSPACE (Защита от вылетов)
         // Backspace с UTF-8 поддержкой
         if (event->inputEvent == INPUT_BROKER_BACK && this->freetext.length() > 0) {
             if (CyrillicExtension::isCyrillic) {
@@ -514,7 +493,7 @@ int CannedMessageModule::handleInputEvent(const InputEvent *event)
             return true;
         }
 
-        // 4. Все остальные кнопки (Enter для отправки, стрелки влево/вправо, Cancel)
+        // 3. Все остальные кнопки (Enter для отправки, стрелки влево/вправо, Cancel)
         // отдаем родному обработчику
         return handleFreeTextInput(event);
 
@@ -1007,18 +986,6 @@ bool CannedMessageModule::handleFreeTextInput(const InputEvent *event)
 
     // Backspace
     if (event->inputEvent == INPUT_BROKER_BACK && this->freetext.length() > 0) {
-        if (CyrillicExtension::isCyrillic) {
-            // Находим индекс начала предыдущего UTF-8 символа (чтобы удалить букву целиком)
-            int prevIdx = CyrillicExtension::getPrevUtf8Index(freetext, cursor);
-            freetext = freetext.substring(0, prevIdx) + freetext.substring(cursor);
-            cursor = prevIdx;
-            lastTouchMillis = millis();
-
-            UIFrameEvent e;
-            e.action = UIFrameEvent::Action::REGENERATE_FRAMESET;
-            notifyObservers(&e);
-            return true;
-        }
         payload = 0x08;
         lastTouchMillis = millis();
         requestFocus();
@@ -1065,17 +1032,9 @@ bool CannedMessageModule::handleFreeTextInput(const InputEvent *event)
         return handleTabSwitch(event); // Reuse tab logic
     }
 
-    // Printable ASCII (add char to draft)
-    // Printable ASCII + Cyrillic
+    // Printable ASCII (add char to draft) + Cyrillic
     if (event->kbchar >= 32 && event->kbchar <= 126) {
-        const char* translated = CyrillicExtension::translateKey(event->kbchar);
-        if (translated) {
-            freetext = freetext.substring(0, cursor) + translated + freetext.substring(cursor);
-            cursor += strlen(translated);
-        } else {
-            freetext = freetext.substring(0, cursor) + (char)event->kbchar + freetext.substring(cursor);
-            cursor++;
-        }
+        CyrillicExtension::insertKey(freetext, cursor, event->kbchar);
         lastTouchMillis = millis();
         UIFrameEvent e;
         e.action = UIFrameEvent::Action::REGENERATE_FRAMESET;
