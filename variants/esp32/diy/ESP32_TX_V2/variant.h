@@ -1,17 +1,44 @@
 // ============================================================
-// ESP32_TX_V2
-// Поддержка: E22-400M30S (SX1268) — активен по умолчанию
-//            E32-400M30S (SX127x) — можно включить позже
+// ESP32_TX_V2 — самодельное устройство на ESP32 (DIY)
+//
+// Радиомодуль подключается по SPI и может быть одним из:
+//   - EBYTE E22-400M30S на чипе SX1268 (а также совместимые по
+//     распиновке модули на SX1262 / LLCC68)
+//   - EBYTE E32-400M30S на чипе SX1278
+//
+// Прошивка ОДНА И ТА ЖЕ для всех вариантов: при старте Meshtastic
+// сам определяет, какой чип физически распаян на плате — пробует
+// по очереди SX127x, затем SX1262, SX1268, LLCC68 (см.
+// src/mesh/RadioInterface.cpp), и оставляет тот, что откликнулся
+// по SPI. Поэтому НЕ нужно ничего пересобирать при замене модуля —
+// важно лишь, чтобы распиновка (SPI, RESET, DIO0/BUSY, DIO1,
+// RXEN/TXEN) физически совпадала у обоих модулей на плате.
 // ============================================================
 
 // ----- Дисплей OLED (I2C) -----
 #define I2C_SDA 21
 #define I2C_SCL 22
-// #define USE_SSD1306          // раскомментируй, если нужно явно
+// #define USE_SSD1306          // раскомментируй, если нужно явно указать контроллер
+
+// ----- Клавиатура на ОТДЕЛЬНОМ втором I2C (опционально) -----
+// Та же клавиатура (CardKB-совместимый контроллер на RP2350), что и в
+// E32_400_MESH_V2_keyboard, но здесь висит на своей собственной шине I2C1,
+// а не на основной (I2C_SDA/I2C_SCL), чтобы не мешать дисплею.
+// Само определение I2C_SDA1/I2C_SCL1 — это и есть переключатель: как только
+// оно объявлено, прошивка сама поднимает вторую шину Wire1 и ищет клавиатуру
+// сначала на ней (см. src/main.cpp, src/input/cardKbI2cImpl.cpp). Чтобы
+// выключить поддержку клавиатуры — закомментируй строку ENABLE_KEYBOARD_I2C.
+#define ENABLE_KEYBOARD_I2C
+#ifdef ENABLE_KEYBOARD_I2C
+    #define I2C_SDA1 4  // GPIO4 — обычный пин, не влияет на загрузку
+    #define I2C_SCL1 5  // GPIO5 — служебный (strapping) пин, но с подтяжкой I2C
+                         // (уровень покоя — HIGH) на загрузку не влияет
+#endif
+// GPIO27 сознательно не занимаем — он зарезервирован под LED_PIN/LED_POWER ниже.
 
 // ----- Кнопка -----
 #define BUTTON_PIN 0
-// #define BUTTON_NEED_PULLUP   // обычно на GPIO0 уже есть подтяжка
+// #define BUTTON_NEED_PULLUP   // обычно на GPIO0 уже есть подтяжка (кнопка BOOT)
 
 // ----- LED -----
 //#define LED_PIN 27
@@ -29,11 +56,14 @@
 // ----- UART -----
 // Стандартные пины ESP32:
 // UART0 (Serial / USB): TX = 1, RX = 3
-// UART2 (свободный):    TX = 17, RX = 16  ← заняты NSS и MOSFET
-// Переназначать не нужно, если GPS нет.
+// UART2 (свободен, если GPS не используется): TX = 17, RX = 16
+// Обрати внимание: GPIO17 занят под LORA_CS (NSS) — если решишь
+// повесить GPS на UART2, для TX придётся выбрать другой пин.
 
 // ============================================================
 // Радио — общие пины
+// Используются обоими семействами чипов, т.к. модули E22/E32
+// в корпусе "S" распаиваются в одни и те же контактные площадки.
 // ============================================================
 #define LORA_SCK  18
 #define LORA_MISO 19
@@ -41,42 +71,47 @@
 #define LORA_CS   17          // NSS
 
 #define LORA_RESET 14         // RST
-#define LORA_DIO1  25         // IRQ (DIO1)
-#define LORA_DIO0  26         // BUSY у E22 / DIO0 у E32
+#define LORA_DIO1  25         // DIO1 — IRQ и у SX126x, и у SX127x
+#define LORA_DIO0  26         // BUSY у SX126x (E22) / DIO0=IRQ у SX127x (E32)
 
-#define LORA_RXEN  13         // RXEN
-#define LORA_TXEN  12         // TXEN
+#define LORA_RXEN  13         // RXEN — управление приёмным плечом антенного переключателя
+#define LORA_TXEN  12         // TXEN — управление передающим плечом
+// ВНИМАНИЕ: GPIO12 — strapping-пин ESP32 (MTDI), от его уровня при
+// сбросе зависит напряжение питания flash-памяти. Если модуль или
+// подтягивающие резисторы держат его в HIGH во время старта, плата
+// может не загрузиться. Если возникнут проблемы с загрузкой —
+// проверь этот пин осциллографом или перенеси TXEN на другой GPIO.
 
 // ============================================================
-// SX126x (E22-400M30S) — АКТИВЕН
+// SX126x — E22-400M30S и совместимые модули (SX1262 / SX1268 / LLCC68)
 // ============================================================
-#define USE_SX1268
-
 #define SX126X_CS     LORA_CS
 #define SX126X_SCK    LORA_SCK
 #define SX126X_MISO   LORA_MISO
 #define SX126X_MOSI   LORA_MOSI
 #define SX126X_RESET  LORA_RESET
 #define SX126X_DIO1   LORA_DIO1
-#define SX126X_BUSY   LORA_DIO0     // у E22 BUSY = DIO0
+#define SX126X_BUSY   LORA_DIO0     // у E22 BUSY подключен туда же, куда у E32 идёт DIO0
 #define SX126X_RXEN   LORA_RXEN
 #define SX126X_TXEN   LORA_TXEN
 
 #define SX126X_MAX_POWER 22
 #define SX126X_DIO3_TCXO_VOLTAGE 1.8
-#define TCXO_OPTIONAL
+#define TCXO_OPTIONAL   // прошивка сама попробует и TCXO, и обычный кварц
+
+// Модули E22 с одинаковой распиновкой встречаются на разных чипах —
+// включаем сразу все три, чтобы автоопределение сработало для любого из них.
+#define USE_SX1262
+#define USE_SX1268
+#define USE_LLCC68
 
 // ============================================================
-// RF95 / SX127x (E32-400M30S) — пока выключен
-// Чтобы включить — раскомментируй USE_RF95 и закомментируй USE_SX1268
+// SX127x — E32-400M30S на чипе SX1278
 // ============================================================
-// #define USE_RF95
+#define RF95_TXEN LORA_TXEN
+#define RF95_RXEN LORA_RXEN
+// RF95_IRQ / RF95_RESET / RF95_DIO1 задавать вручную не нужно —
+// их автоматически выставит src/RF95Configuration.h из LORA_DIO0 /
+// LORA_RESET / LORA_DIO1, когда определён USE_RF95.
 
-#ifdef USE_RF95
-#define RF95_CS     LORA_CS
-#define RF95_IRQ    LORA_DIO0     // у E32 DIO0 = IRQ
-#define RF95_RESET  LORA_RESET
-#define RF95_TXEN   LORA_TXEN
-#define RF95_RXEN   LORA_RXEN
-#define RF95_MAX_POWER 20
-#endif
+#define USE_RF95

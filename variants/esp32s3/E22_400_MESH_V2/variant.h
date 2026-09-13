@@ -59,29 +59,67 @@
 
 
 //*************************************************   Піни для інтерфейсу радіомодема    ******************************************************/
+// Прошивка одна и та же для двух совместимых по ногам модулей — E22 (чипы
+// SX1262/SX1268/LLCC68) и E32 (RF95/SX1278). При старте прошивка сама
+// определяет, что физически распаяно (см. src/mesh/RadioInterface.cpp и
+// раздел 1 в PROMPT_PROJECT_MESH.md) — менять defines под конкретный модуль
+// не нужно.
 
-//#define USE_SX1262 // E22-900M30S використовує SX1262
-#define USE_SX1268 // E22-400M30S використовує SX1268
+#define LORA_CS     13   // NSS
+#define LORA_SCK    7
+#define LORA_MOSI   8
+#define LORA_MISO   9
+#define LORA_RESET  12
+#define LORA_DIO1   10
+#define LORA_DIO0   11   // BUSY у SX126x (E22) / IRQ у SX127x (E32)
+#define LORA_RXEN   1    // общий RXEN — остаётся на MCU в обеих схемах ниже
 
-#define SX126X_CS 13    // Пін NSS (CS) модема SX126x
-#define LORA_SCK 7
-#define LORA_MOSI 8
-#define LORA_MISO 9
-#define SX126X_RESET 12
-#define SX126X_BUSY 11
-#define SX126X_DIO1 10
+// --- SX126x (E22-400M30S и совместимые по ногам SX1262/LLCC68) ---
+#define SX126X_CS     LORA_CS
+#define SX126X_RESET  LORA_RESET
+#define SX126X_DIO1   LORA_DIO1
+#define SX126X_BUSY   LORA_DIO0
+#define SX126X_RXEN   LORA_RXEN
+#define SX126X_MAX_POWER 22 // Максимальна потужність передавача
 
-#define SX126X_TXEN 2
-#define SX126X_RXEN 1
+#define SX126X_DIO3_TCXO_VOLTAGE 1.8
+// TCXO_OPTIONAL обязателен для этой платы: только он заставляет RadioInterface.cpp
+// реально вызвать setTCXOVoltage(1.8) перед инициализацией чипа. Без него
+// SX126X_DIO3_TCXO_VOLTAGE выше молча игнорируется (баг в апстриме, см.
+// PROMPT_PROJECT_MESH.md), и TCXO физически не включается.
+#define TCXO_OPTIONAL // make it so that the firmware can try both TCXO and XTAL
+
+// Схема управления РЧ-переключателем SX126x. По умолчанию — полное подключение,
+// как разведено на плате сейчас: TXEN тоже на отдельном GPIO контроллера.
+// На будущей ревизии платы, если решишь сэкономить один пин и развести
+// управление через встроенный DIO2 чипа (как на nRF52840_Ebyte_modems) —
+// раскомментируй строку ниже.
+// ВНИМАНИЕ: модем E32/RF95 не умеет управлять переключателем через DIO2 (это
+// возможность только чипов SX126x) — при включении этого режима поддержка
+// E32/RF95 автоматически отключается (см. #else ниже): без физического TXEN
+// модуль RF95 передавать не сможет, останутся только чипы семейства SX126x.
 
 // #define SX126X_DIO2_AS_RF_SWITCH
-#define SX126X_DIO3_TCXO_VOLTAGE 1.8
-// #define TCXO_OPTIONAL // make it so that the firmware can try both TCXO and XTAL
 
-#define LORA_CS SX126X_CS
-#define LORA_DIO1 SX126X_DIO1
+#ifdef SX126X_DIO2_AS_RF_SWITCH
+    #define SX126X_TXEN RADIOLIB_NC // TX-плечо переключает сам чип через DIO2, GPIO не нужен
+#else
+    #define LORA_TXEN 2
+    #define SX126X_TXEN LORA_TXEN
 
-#define SX126X_MAX_POWER 22 // Максимальна потужність передавача
+    // --- RF95 (E32-400M30S на чипе SX1278) — доступен только в режиме
+    // полного подключения выше (нужен физический TXEN) ---
+    #define USE_RF95
+    #define RF95_TXEN LORA_TXEN
+    #define RF95_RXEN LORA_RXEN
+    #define RF95_MAX_POWER 20
+#endif
+
+// Модули E22 могут поставляться на разных чипах при одинаковой распиновке —
+// включаем все три сразу, чтобы автоопределение сработало для любого из них.
+#define USE_SX1262
+#define USE_SX1268
+#define USE_LLCC68
 //*************************************************  END Піни для інтерфейсу радіомодема   *****************************************************/
 
 // ==========================================================================
