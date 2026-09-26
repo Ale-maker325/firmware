@@ -19,6 +19,7 @@
 */
 
 #include "variant.h"
+#include "Arduino.h"
 #include "nrf.h"
 #include "wiring_constants.h"
 #include "wiring_digital.h"
@@ -30,6 +31,14 @@ const uint32_t g_ADigitalPinMap[] = {
 
     // P1
     32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47};
+
+#ifdef KEYBOARD_BOOT_DELAY_MS
+// Вызывается из setup() до поиска устройств I2C: ждём, пока контроллер клавиатуры RP2350 поднимет I2C
+void earlyInitVariant()
+{
+    delay(KEYBOARD_BOOT_DELAY_MS);
+}
+#endif
 
 void initVariant()
 {
